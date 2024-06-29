@@ -1,0 +1,3 @@
+# VMArgs for output.sh-loaded decompile process 
+-Xmx6000M -Xms3G
+-Dxdecompiler.threads.remap=2

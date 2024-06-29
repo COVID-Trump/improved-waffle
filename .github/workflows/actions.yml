@@ -1,0 +1,91 @@
+# actions.yml
+name: Decompile - Release Only
+  
+on:  
+  schedule:  
+    - cron: '0 5,23 * * *'  # Run at 5am and 11pm every day  
+  workflow_dispatch:  # Allow manual triggering  
+
+jobs:  
+  decompile:  
+    runs-on: ubuntu-latest  
+    steps:  
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.XD_GITHUB_TOKEN }}
+      - name: Set up JDK  
+        uses: actions/setup-java@v4
+        with:  
+          java-version: 21
+          distribution: 'microsoft'
+      - name: Create directories
+        run: |
+          mkdir -p out
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:  
+          repository: ${{ secrets.XD_REPO_CODE }}  
+          path: out/src  
+          token: ${{ secrets.XD_GITHUB_TOKEN }}
+          fetch-depth: 0   # Include tags
+#      - name: Checkout Resources  
+#        uses: actions/checkout@v3  
+#        with:  
+#          repository: ${{ secrets.XD_REPO_RES }}  
+#          path: out/resources  
+#          token: ${{ secrets.XD_GITHUB_TOKEN }}
+#          fetch-depth: 0
+      - name: Download XDecompiler
+        run: |
+          wget -O "$GITHUB_WORKSPACE/XDecompiler-fat.jar" $(cat xdecompiler_link.txt)
+      - name: Fetch MC Versions  
+        run: |  
+          cd "$GITHUB_WORKSPACE/out/src"
+          branches=$(git branch -a | grep remotes | grep -v HEAD | grep -v master)  
+          for branch in $branches; do  
+            branch=${branch#remotes/origin/}  
+            echo "Checking branch $branch"  
+            git checkout "$branch"
+            if [ -f "version.txt" ]; then  
+              echo "Found version.txt, adding $(cat version.txt) to XD_REPO_MCVERSION"  
+              cat "version.txt" >> "$GITHUB_WORKSPACE/xd_repo_mcversion.txt"
+            else  
+              echo "No version.txt, skipping $branch"  
+            fi  
+          done  
+          echo 'All available versions are: ' $(cat "$GITHUB_WORKSPACE/xd_repo_mcversion.txt")
+          echo '----------------'
+          cd "$GITHUB_WORKSPACE"
+      - name: Run XDecompiler-fat.jar  
+        run: |  
+          java "@$GITHUB_WORKSPACE/vmargs-script.txt" -jar "$GITHUB_WORKSPACE/XDecompiler-fat.jar" --run-script gitrepo $(cat "$GITHUB_WORKSPACE/xd_repo_mcversion.txt") $(cat "$GITHUB_WORKSPACE/exargs-script.txt")
+      - name: Run output.sh and Log Output  
+        run: |  
+          bash "$GITHUB_WORKSPACE/output.sh"
+      - name: Push changes to out/src repository  
+        uses: COVID-Trump/github-push-action@master  
+        with:  
+          directory: out/src  
+          branch: ALL  # Replace with the branch you want to push to  
+          github_token: ${{ secrets.XD_GITHUB_TOKEN }}  
+          tags: true
+          repository: ${{ secrets.XD_REPO_CODE }}
+#      - name: Push changes to out/resources repository  
+#        uses: COVID-Trump/github-push-action@master  
+#        with:  
+#          directory: out/resources  
+#          branch: ALL  # Replace with the branch you want to push to  
+#          github_token: ${{ secrets.XD_GITHUB_TOKEN }}
+#          tags: true
+#          repository: ${{ secrets.XD_REPO_RES }}
+      - name: Archive decompile logs
+        run: |
+          tar -cvzf xd_decompile_stage_logs.tgz logs/ && echo 'archive_log_success=true' >> $GITHUB_ENV || true
+      - name: Upload decompile logs
+        uses: actions/upload-artifact@v4
+        if: env.archive_log_success == 'true'
+        with:
+          name: decompile-stage-logs
+          path: xd_decompile_stage_logs.tgz
+          retention-days: 7

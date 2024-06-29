@@ -1,0 +1,1 @@
+https://github.com/teddyxlandlee/XDecompiler/releases/download/1.4.1/XDecompiler-1.4.1-fat.jar
